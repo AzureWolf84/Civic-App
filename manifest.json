@@ -1,0 +1,17 @@
+{
+  "name": "Gestão Civic LXL 1.7",
+  "short_name": "Civic LXL",
+  "description": "Controlo financeiro e manutenção do Honda Civic LXL 1.7",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f0f2f5",
+  "theme_color": "#2e7d32",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3204/3204121.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
