@@ -170,24 +170,35 @@ registroForm.addEventListener('submit', (e) => {
     sincronizarNuvem();
 });
 
-// 4. FUNÇÃO DE EXCLUSÃO CORRIGIDA (Remove pelo ID ou índice)
+// 4. FUNÇÃO DE EXCLUSÃO (Soft Delete integrado com Google Sheets)
 function apagarRegistro(tipo, idAlvo) {
-    if (!confirm("Tem certeza de que deseja remover este registo do painel?")) return;
+    if (!confirm("Tem certeza de que deseja remover este registo?")) return;
 
+    let nomeAba = 'Abastecimentos';
     if (tipo === 'abastecimento') {
         dadosApp.abastecimentos = dadosApp.abastecimentos.filter(a => {
             const currentId = a.id || a.ID || a.tempId || '';
             return currentId !== idAlvo;
         });
+        nomeAba = 'Abastecimentos';
     } else {
         dadosApp.manutencoes = dadosApp.manutencoes.filter(m => {
             const currentId = m.id || m.ID || m.tempId || '';
             return currentId !== idAlvo;
         });
+        nomeAba = 'Manutencoes';
     }
 
     salvarCacheLocal();
     renderizarTelas();
+
+    const payload = {
+        action: 'softDelete',
+        id: idAlvo,
+        sheetName: nomeAba
+    };
+    adicionarFilaSync(payload);
+    sincronizarNuvem();
 }
 
 // 5. LÓGICA OFFLINE-FIRST E SINCRONIZAÇÃO
