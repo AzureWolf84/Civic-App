@@ -73,7 +73,7 @@ function fecharModais() {
     registroForm.reset();
 }
 
-// 3. FORMULÁRIOS DINÂMICOS (Com suporte a Abastecimento, Oficina e Documento/IPVA)
+// 3. FORMULÁRIOS DINÂMICOS
 function abrirFormulario(tipo) {
     modalEscolha.classList.remove('active');
     formAtual = tipo;
@@ -96,7 +96,7 @@ function abrirFormulario(tipo) {
         formTitle.innerText = 'Nova Manutenção';
         formFields.innerHTML = `
             <div class="input-group"><label>Data</label><input type="date" id="f-data" required value="${hoje}"></div>
-            <div class="input-group"><label>Peça / Serviço</label><input type="text" id="f-desc" placeholder="Ex: Troca de Óleo e Filtro" required></div>
+            <div class="input-group"><label>Peça / Serviço</label><input type="text" id="f-desc" placeholder="Ex: Pastilhas de Travão" required></div>
             <div class="input-group"><label>Valor Total (R$)</label><input type="number" step="0.01" id="f-valor" required></div>
             <div class="input-group"><label>Km Atual</label><input type="number" id="f-km" required></div>
             <div class="input-group"><label>Próxima Troca (Em Km)</label><input type="number" id="f-venc-km" placeholder="Ex: 10000"></div>
@@ -106,9 +106,9 @@ function abrirFormulario(tipo) {
         formTitle.innerText = 'Registar IPVA / Seguro';
         formFields.innerHTML = `
             <div class="input-group"><label>Data do Pagamento</label><input type="date" id="f-data" required value="${hoje}"></div>
-            <div class="input-group"><label>Descrição / Obrigação</label><input type="text" id="f-desc" placeholder="Ex: IPVA 2026 - Parcela Única" required></div>
+            <div class="input-group"><label>Descrição / Obrigação</label><input type="text" id="f-desc" placeholder="Ex: IPVA 2026 - Parcela 1" required></div>
             <div class="input-group"><label>Valor Total (R$)</label><input type="number" step="0.01" id="f-valor" required></div>
-            <div class="input-group"><label>Data de Vencimento (Próximo Ano)</label><input type="date" id="f-venc-data"></div>
+            <div class="input-group"><label>Data de Vencimento</label><input type="date" id="f-venc-data"></div>
         `;
     }
     modalForm.classList.add('active');
@@ -116,7 +116,7 @@ function abrirFormulario(tipo) {
 
 registroForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const id = new Date().getTime().toString();
+    const idUnico = 'ID_' + Date.now();
     let payload = {};
 
     if (formAtual === 'abastecimento') {
@@ -126,7 +126,7 @@ registroForm.addEventListener('submit', (e) => {
         
         payload = {
             action: 'addAbastecimento',
-            id: id,
+            id: idUnico,
             data: document.getElementById('f-data').value,
             valorTotal: valor,
             valorLitro: precoLitro,
@@ -138,7 +138,7 @@ registroForm.addEventListener('submit', (e) => {
     } else if (formAtual === 'manutencao') {
         payload = {
             action: 'addManutencao',
-            id: id,
+            id: idUnico,
             data: document.getElementById('f-data').value,
             tipo: 'Corretiva/Preventiva',
             descricao: document.getElementById('f-desc').value,
@@ -151,7 +151,7 @@ registroForm.addEventListener('submit', (e) => {
     } else if (formAtual === 'documento') {
         payload = {
             action: 'addManutencao',
-            id: id,
+            id: idUnico,
             data: document.getElementById('f-data').value,
             tipo: 'Documentação/IPVA',
             descricao: document.getElementById('f-desc').value,
@@ -170,7 +170,27 @@ registroForm.addEventListener('submit', (e) => {
     sincronizarNuvem();
 });
 
-// 4. LÓGICA OFFLINE-FIRST E SINCRONIZAÇÃO
+// 4. FUNÇÃO DE EXCLUSÃO CORRIGIDA (Remove pelo ID ou índice)
+function apagarRegistro(tipo, idAlvo) {
+    if (!confirm("Tem certeza de que deseja remover este registo do painel?")) return;
+
+    if (tipo === 'abastecimento') {
+        dadosApp.abastecimentos = dadosApp.abastecimentos.filter(a => {
+            const currentId = a.id || a.ID || a.tempId || '';
+            return currentId !== idAlvo;
+        });
+    } else {
+        dadosApp.manutencoes = dadosApp.manutencoes.filter(m => {
+            const currentId = m.id || m.ID || m.tempId || '';
+            return currentId !== idAlvo;
+        });
+    }
+
+    salvarCacheLocal();
+    renderizarTelas();
+}
+
+// 5. LÓGICA OFFLINE-FIRST E SINCRONIZAÇÃO
 function salvarCacheLocal() {
     const tx = db.transaction('cache', 'readwrite');
     tx.objectStore('cache').put({ tipo: 'abastecimentos', dados: dadosApp.abastecimentos });
@@ -232,42 +252,57 @@ btnSync.addEventListener('click', sincronizarNuvem);
 window.addEventListener('online', sincronizarNuvem);
 window.addEventListener('offline', () => syncIndicator.classList.add('active'));
 
-// 5. RENDERIZAÇÃO DE INTERFACE E CÁLCULOS
+// 6. RENDERIZAÇÃO DE INTERFACE E CÁLCULOS
 function renderizarTelas() {
     const formatBRL = (val) => Number(val).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
     
     // Abastecimentos
-    document.getElementById('lista-abastecimentos').innerHTML = dadosApp.abastecimentos.map(a => `
+    document.getElementById('lista-abastecimentos').innerHTML = dadosApp.abastecimentos.map(a => {
+        const idReg = a.id || a.ID || a.tempId || Math.random();
+        return `
         <div class="card">
             <h4 class="card-title">${a.Data || a.data} <span class="badge ${a['Tanque Cheio'] === 'SIM' || a.tanqueCheio === 'SIM' ? 'bg-success' : 'bg-warning'}">Tanque: ${a['Tanque Cheio'] || a.tanqueCheio}</span></h4>
             <div class="card-row"><span>Km Atual:</span> <span>${a['Km Atual'] || a.kmAtual} Km</span></div>
             <div class="card-row"><span>Litros:</span> <span>${a.Litros || a.litros} L</span></div>
             <div class="card-row valor-financeiro"><span>Valor Total:</span> <span>${formatBRL(a['Valor Total'] || a.valorTotal)}</span></div>
+            <div style="text-align: right; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px;">
+                <button onclick="apagarRegistro('abastecimento', '${idReg}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:0.9em; font-weight:bold;">🗑️ Apagar Registo</button>
+            </div>
         </div>
-    `).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhum abastecimento registado.</p>';
+    `}).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhum abastecimento registado.</p>';
 
-    // Manutenções de Oficina (Exclui documentos)
+    // Manutenções de Oficina
     const manutencoesOficina = dadosApp.manutencoes.filter(m => (m.Tipo || m.tipo) !== 'Documentação/IPVA');
-    document.getElementById('lista-manutencoes').innerHTML = manutencoesOficina.map(m => `
+    document.getElementById('lista-manutencoes').innerHTML = manutencoesOficina.map(m => {
+        const idReg = m.id || m.ID || m.tempId || Math.random();
+        return `
         <div class="card">
             <h4 class="card-title">${m.Data || m.data} <span class="badge bg-success">OFICINA</span></h4>
             <div class="card-row"><span>Serviço:</span> <span>${m.Descricao || m.descricao}</span></div>
             <div class="card-row"><span>Km Atual:</span> <span>${m['Km Atual'] || m.kmAtual} Km</span></div>
             <div class="card-row valor-financeiro"><span>Valor:</span> <span>${formatBRL(m['Valor Total'] || m.valorTotal)}</span></div>
             ${m['Km Vencimento'] && m['Km Vencimento'] !== '-' ? `<div class="card-row"><span style="color:var(--danger)">Vence (Km):</span> <span>${m['Km Vencimento'] || m.kmVencimento} Km</span></div>` : ''}
+            <div style="text-align: right; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px;">
+                <button onclick="apagarRegistro('manutencao', '${idReg}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:0.9em; font-weight:bold;">🗑️ Apagar Registo</button>
+            </div>
         </div>
-    `).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhuma manutenção registada.</p>';
+    `}).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhuma manutenção registada.</p>';
 
-    // Documentação / IPVA / Seguros
+    // Documentação / IPVA
     const documentos = dadosApp.manutencoes.filter(m => (m.Tipo || m.tipo) === 'Documentação/IPVA');
-    document.getElementById('lista-documentacao').innerHTML = documentos.map(d => `
+    document.getElementById('lista-documentacao').innerHTML = documentos.map(d => {
+        const idReg = d.id || d.ID || d.tempId || Math.random();
+        return `
         <div class="card">
             <h4 class="card-title">${d.Data || d.data} <span class="badge bg-success">DOCUMENTO</span></h4>
             <div class="card-row"><span>Descrição:</span> <span>${d.Descricao || d.descricao}</span></div>
             <div class="card-row valor-financeiro"><span>Valor Pago:</span> <span>${formatBRL(d['Valor Total'] || d.valorTotal)}</span></div>
             ${d['Data Vencimento'] && d['Data Vencimento'] !== '-' ? `<div class="card-row"><span>Vencimento:</span> <span>${d['Data Vencimento'] || d.dataVencimento}</span></div>` : ''}
+            <div style="text-align: right; margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px;">
+                <button onclick="apagarRegistro('manutencao', '${idReg}')" style="background:none; border:none; color:var(--danger); cursor:pointer; font-size:0.9em; font-weight:bold;">🗑️ Apagar Registo</button>
+            </div>
         </div>
-    `).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhuma obrigação / IPVA registada.</p>';
+    `}).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhuma obrigação / IPVA registada.</p>';
 
     // Dashboard - Hodômetro Geral
     let maiorKm = 0;
@@ -275,7 +310,7 @@ function renderizarTelas() {
     dadosApp.manutencoes.forEach(m => { if(Number(m['Km Atual'] || m.kmAtual) > maiorKm) maiorKm = Number(m['Km Atual'] || m.kmAtual); });
     document.getElementById('dash-km-total').innerText = maiorKm + ' Km';
 
-    // Dashboard - Alertas Manutenção (Baseado em Km)
+    // Dashboard - Alertas Manutenção
     const alertas = manutencoesOficina.filter(m => m['Km Vencimento'] && m['Km Vencimento'] !== '-');
     let htmlAlertas = '';
     alertas.forEach(m => {
@@ -287,7 +322,7 @@ function renderizarTelas() {
     });
     document.getElementById('dash-alertas').innerHTML = htmlAlertas || '<p style="color: var(--text-muted); font-size: 0.9em; margin: 0;">Nenhuma manutenção crítica próxima.</p>';
 
-    // Dashboard - Cálculo de Consumo (Últimos 2 tanques cheios)
+    // Dashboard - Cálculo de Consumo
     const tanquesCheios = dadosApp.abastecimentos.filter(a => (a['Tanque Cheio'] || a.tanqueCheio) === 'SIM').slice(0, 2);
     if(tanquesCheios.length === 2) {
         const kmRodados = Number(tanquesCheios[0]['Km Atual'] || tanquesCheios[0].kmAtual) - Number(tanquesCheios[1]['Km Atual'] || tanquesCheios[1].kmAtual);
