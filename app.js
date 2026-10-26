@@ -23,7 +23,7 @@ const formFields = document.getElementById('form-fields');
 const formTitle = document.getElementById('form-title');
 
 // 1. INICIALIZAÇÃO DO BANCO DE DADOS LOCAL (IndexedDB)
-const initDB = indexedDB.open("CivicDB", 1);
+const initDB = indexedDB.open("CivicDB", 2);
 initDB.onupgradeneeded = (e) => {
     db = e.target.result;
     if (!db.objectStoreNames.contains('cache')) db.createObjectStore('cache', { keyPath: 'tipo' });
@@ -73,7 +73,7 @@ function fecharModais() {
     registroForm.reset();
 }
 
-// 3. FORMULÁRIOS DINÂMICOS
+// 3. FORMULÁRIOS DINÂMICOS (Com suporte a Abastecimento, Oficina e Documento/IPVA)
 function abrirFormulario(tipo) {
     modalEscolha.classList.remove('active');
     formAtual = tipo;
@@ -88,19 +88,27 @@ function abrirFormulario(tipo) {
             <div class="input-group"><label>Valor Total (R$)</label><input type="number" step="0.01" id="f-valor" required></div>
             <div class="input-group"><label>Preço por Litro (R$)</label><input type="number" step="0.01" id="f-litro" required></div>
             <div class="input-group"><label>Km Atual</label><input type="number" id="f-km" required></div>
-            <div class="input-group" style="display:flex; align-items:center; gap:10px;">
-                <input type="checkbox" id="f-cheio" style="width:20px;"> <label style="margin:0;">Tanque Cheio?</label>
+            <div class="input-group" style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+                <input type="checkbox" id="f-cheio" style="width:20px; height:20px;"> <label style="margin:0; cursor:pointer;">Tanque Cheio?</label>
             </div>
         `;
     } else if (tipo === 'manutencao') {
         formTitle.innerText = 'Nova Manutenção';
         formFields.innerHTML = `
             <div class="input-group"><label>Data</label><input type="date" id="f-data" required value="${hoje}"></div>
-            <div class="input-group"><label>Peça/Serviço</label><input type="text" id="f-desc" required></div>
+            <div class="input-group"><label>Peça / Serviço</label><input type="text" id="f-desc" placeholder="Ex: Troca de Óleo e Filtro" required></div>
             <div class="input-group"><label>Valor Total (R$)</label><input type="number" step="0.01" id="f-valor" required></div>
             <div class="input-group"><label>Km Atual</label><input type="number" id="f-km" required></div>
             <div class="input-group"><label>Próxima Troca (Em Km)</label><input type="number" id="f-venc-km" placeholder="Ex: 10000"></div>
             <div class="input-group"><label>Próxima Troca (Data)</label><input type="date" id="f-venc-data"></div>
+        `;
+    } else if (tipo === 'documento') {
+        formTitle.innerText = 'Registar IPVA / Seguro';
+        formFields.innerHTML = `
+            <div class="input-group"><label>Data do Pagamento</label><input type="date" id="f-data" required value="${hoje}"></div>
+            <div class="input-group"><label>Descrição / Obrigação</label><input type="text" id="f-desc" placeholder="Ex: IPVA 2026 - Parcela Única" required></div>
+            <div class="input-group"><label>Valor Total (R$)</label><input type="number" step="0.01" id="f-valor" required></div>
+            <div class="input-group"><label>Data de Vencimento (Próximo Ano)</label><input type="date" id="f-venc-data"></div>
         `;
     }
     modalForm.classList.add('active');
@@ -138,6 +146,19 @@ registroForm.addEventListener('submit', (e) => {
             kmAtual: parseInt(document.getElementById('f-km').value),
             dataVencimento: document.getElementById('f-venc-data').value || '-',
             kmVencimento: document.getElementById('f-venc-km').value || '-'
+        };
+        dadosApp.manutencoes.unshift(payload);
+    } else if (formAtual === 'documento') {
+        payload = {
+            action: 'addManutencao',
+            id: id,
+            data: document.getElementById('f-data').value,
+            tipo: 'Documentação/IPVA',
+            descricao: document.getElementById('f-desc').value,
+            valorTotal: parseFloat(document.getElementById('f-valor').value),
+            kmAtual: 0,
+            dataVencimento: document.getElementById('f-venc-data').value || '-',
+            kmVencimento: '-'
         };
         dadosApp.manutencoes.unshift(payload);
     }
@@ -215,51 +236,72 @@ window.addEventListener('offline', () => syncIndicator.classList.add('active'));
 function renderizarTelas() {
     const formatBRL = (val) => Number(val).toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
     
+    // Abastecimentos
     document.getElementById('lista-abastecimentos').innerHTML = dadosApp.abastecimentos.map(a => `
         <div class="card">
-            <h4 class="card-title">${a.Data || a.data} <span class="badge ${a['Tanque Cheio'] === 'SIM' || a.tanqueCheio === 'SIM' ? 'bg-success' : 'bg-warning'}">${a['Tanque Cheio'] || a.tanqueCheio}</span></h4>
-            <div class="card-row"><span>Km:</span> <span>${a['Km Atual'] || a.kmAtual}</span></div>
+            <h4 class="card-title">${a.Data || a.data} <span class="badge ${a['Tanque Cheio'] === 'SIM' || a.tanqueCheio === 'SIM' ? 'bg-success' : 'bg-warning'}">Tanque: ${a['Tanque Cheio'] || a.tanqueCheio}</span></h4>
+            <div class="card-row"><span>Km Atual:</span> <span>${a['Km Atual'] || a.kmAtual} Km</span></div>
             <div class="card-row"><span>Litros:</span> <span>${a.Litros || a.litros} L</span></div>
-            <div class="card-row valor-financeiro"><span>Total:</span> <span>${formatBRL(a['Valor Total'] || a.valorTotal)}</span></div>
+            <div class="card-row valor-financeiro"><span>Valor Total:</span> <span>${formatBRL(a['Valor Total'] || a.valorTotal)}</span></div>
         </div>
-    `).join('');
+    `).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhum abastecimento registado.</p>';
 
-    document.getElementById('lista-manutencoes').innerHTML = dadosApp.manutencoes.map(m => `
+    // Manutenções de Oficina (Exclui documentos)
+    const manutencoesOficina = dadosApp.manutencoes.filter(m => (m.Tipo || m.tipo) !== 'Documentação/IPVA');
+    document.getElementById('lista-manutencoes').innerHTML = manutencoesOficina.map(m => `
         <div class="card">
-            <h4 class="card-title">${m.Data || m.data}</h4>
+            <h4 class="card-title">${m.Data || m.data} <span class="badge bg-success">OFICINA</span></h4>
             <div class="card-row"><span>Serviço:</span> <span>${m.Descricao || m.descricao}</span></div>
-            <div class="card-row"><span>Km Atual:</span> <span>${m['Km Atual'] || m.kmAtual}</span></div>
+            <div class="card-row"><span>Km Atual:</span> <span>${m['Km Atual'] || m.kmAtual} Km</span></div>
             <div class="card-row valor-financeiro"><span>Valor:</span> <span>${formatBRL(m['Valor Total'] || m.valorTotal)}</span></div>
-            ${m['Km Vencimento'] !== '-' ? `<div class="card-row"><span style="color:var(--danger)">Vence (Km):</span> <span>${m['Km Vencimento'] || m.kmVencimento}</span></div>` : ''}
+            ${m['Km Vencimento'] && m['Km Vencimento'] !== '-' ? `<div class="card-row"><span style="color:var(--danger)">Vence (Km):</span> <span>${m['Km Vencimento'] || m.kmVencimento} Km</span></div>` : ''}
         </div>
-    `).join('');
+    `).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhuma manutenção registada.</p>';
 
+    // Documentação / IPVA / Seguros
+    const documentos = dadosApp.manutencoes.filter(m => (m.Tipo || m.tipo) === 'Documentação/IPVA');
+    document.getElementById('lista-documentacao').innerHTML = documentos.map(d => `
+        <div class="card">
+            <h4 class="card-title">${d.Data || d.data} <span class="badge bg-success">DOCUMENTO</span></h4>
+            <div class="card-row"><span>Descrição:</span> <span>${d.Descricao || d.descricao}</span></div>
+            <div class="card-row valor-financeiro"><span>Valor Pago:</span> <span>${formatBRL(d['Valor Total'] || d.valorTotal)}</span></div>
+            ${d['Data Vencimento'] && d['Data Vencimento'] !== '-' ? `<div class="card-row"><span>Vencimento:</span> <span>${d['Data Vencimento'] || d.dataVencimento}</span></div>` : ''}
+        </div>
+    `).join('') || '<p style="color: var(--text-muted); text-align:center;">Nenhuma obrigação / IPVA registada.</p>';
+
+    // Dashboard - Hodômetro Geral
     let maiorKm = 0;
     dadosApp.abastecimentos.forEach(a => { if(Number(a['Km Atual'] || a.kmAtual) > maiorKm) maiorKm = Number(a['Km Atual'] || a.kmAtual); });
     dadosApp.manutencoes.forEach(m => { if(Number(m['Km Atual'] || m.kmAtual) > maiorKm) maiorKm = Number(m['Km Atual'] || m.kmAtual); });
     document.getElementById('dash-km-total').innerText = maiorKm + ' Km';
 
-    const alertas = dadosApp.manutencoes.filter(m => m['Km Vencimento'] && m['Km Vencimento'] !== '-');
+    // Dashboard - Alertas Manutenção (Baseado em Km)
+    const alertas = manutencoesOficina.filter(m => m['Km Vencimento'] && m['Km Vencimento'] !== '-');
     let htmlAlertas = '';
     alertas.forEach(m => {
         const venceEm = Number(m['Km Vencimento'] || m.kmVencimento);
         const faltam = venceEm - maiorKm;
         if(faltam <= 1000) {
-            htmlAlertas += `<div class="card-row" style="color:var(--danger); border-bottom:1px solid var(--border); padding-bottom:5px;"><span>${m.Descricao || m.descricao}:</span> <span>Vence em ${faltam} Km!</span></div>`;
+            htmlAlertas += `<div class="card-row" style="color:var(--danger); border-bottom:1px solid var(--border); padding-bottom:5px; margin-bottom:5px;"><span>${m.Descricao || m.descricao}:</span> <span>Vence em ${faltam} Km!</span></div>`;
         }
     });
-    document.getElementById('dash-alertas').innerHTML = htmlAlertas || '<p style="color: var(--primary);">Nenhuma manutenção crítica próxima.</p>';
+    document.getElementById('dash-alertas').innerHTML = htmlAlertas || '<p style="color: var(--text-muted); font-size: 0.9em; margin: 0;">Nenhuma manutenção crítica próxima.</p>';
 
-    const tanquesCheios = dadosApp.abastecimentos.filter(a => a['Tanque Cheio'] === 'SIM' || a.tanqueCheio === 'SIM').slice(0, 2);
+    // Dashboard - Cálculo de Consumo (Últimos 2 tanques cheios)
+    const tanquesCheios = dadosApp.abastecimentos.filter(a => (a['Tanque Cheio'] || a.tanqueCheio) === 'SIM').slice(0, 2);
     if(tanquesCheios.length === 2) {
         const kmRodados = Number(tanquesCheios[0]['Km Atual'] || tanquesCheios[0].kmAtual) - Number(tanquesCheios[1]['Km Atual'] || tanquesCheios[1].kmAtual);
         const litrosGanhos = Number(tanquesCheios[0].Litros || tanquesCheios[0].litros);
-        const media = (kmRodados / litrosGanhos).toFixed(1);
-        document.getElementById('dash-consumo').innerHTML = `
-            <div class="card-row"><span>Média Km/L:</span> <span style="font-size:1.2em; color:var(--primary);">${media} Km/L</span></div>
-            <div class="card-row"><span>Distância:</span> <span>${kmRodados} Km</span></div>
-        `;
+        if(litrosGanhos > 0 && kmRodados > 0) {
+            const media = (kmRodados / litrosGanhos).toFixed(1);
+            document.getElementById('dash-consumo').innerHTML = `
+                <div class="card-row"><span>Média Recente:</span> <span style="font-size:1.1em; color:var(--primary);">${media} Km/L</span></div>
+                <div class="card-row"><span>Distância Entre Tanques:</span> <span>${kmRodados} Km</span></div>
+            `;
+        } else {
+            document.getElementById('dash-consumo').innerHTML = '<p style="color: var(--text-muted); font-size: 0.9em; margin: 0;">Dados insuficientes para cálculo.</p>';
+        }
     } else {
-        document.getElementById('dash-consumo').innerHTML = '<p style="color: #757575; font-size: 0.9em;">Requer pelo menos 2 registos de "Tanque Cheio" para calcular a média.</p>';
+        document.getElementById('dash-consumo').innerHTML = '<p style="color: var(--text-muted); font-size: 0.9em; margin: 0;">Requer 2 registos de "Tanque Cheio" para iniciar a média.</p>';
     }
 }
